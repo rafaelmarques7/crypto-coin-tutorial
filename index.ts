@@ -1,7 +1,22 @@
 import * as crypto from "crypto";
 
-function hexToDecimal(hex: string) {
-    return parseInt(hex, 16).toString(2)
+const minerData = {
+    algorithm: "SHA256",
+    lengthBinary: 256,
+    powLength: 16,
+}
+
+function hexToBinary(hex: string, expectedLength: number) {
+    // convert to binary
+    // use BigInt library, because any number larger than 9*10^15 will be truncated by javascript
+    let bin = BigInt("0x" + hex).toString(2)
+    
+    // add leading zeros if the binary is not of the expected length
+    const numBytesMissing = expectedLength - bin.length
+    if (numBytesMissing > 0) {
+        bin = "0".repeat(numBytesMissing) + bin
+    }
+    return bin
 }
 
 class Transaction {
@@ -41,23 +56,40 @@ class Block {
         return hash.digest('hex')
     }
 
+    /**
+     * Mining works by trying to find a nonce, so that
+     * when you hash the combination of the block headerer and the nonce
+     * you get a hash with meets a certain criteria 
+     * (the criteria is usually a hash that contains a number of trailing zero's)
+     * @returns 
+     */
     mine() {
-        // Mining works by trying to find a nonce, so that
-        // when you hash the combination of the block headerer and the nonce
-        // you get a hash with meets a certain criteria 
-        // (the criteria is usually a hash that contains a number of trailing zero's)
         let nonce = 0
+        console.log("⛏️ Mining...")
+
         while (true) {
-            const hashHex = crypto.createHash("MD5").update(this.header + nonce.toString()).digest('hex')
-            const hashBinary = hexToDecimal(hashHex)
+            // generate hash based on block header and nonce
+            const dataToHash = JSON.stringify(this.header) + nonce.toString()
+            const hashHex = crypto.createHash(minerData.algorithm).update(dataToHash).digest('hex')
+            const hashBinary = hexToBinary(hashHex, minerData.lengthBinary)
 
             // check if hash passes the mining condition
-            if (hashBinary.substring(0, 4) === "0000") {
+            if (this.isValidProofOfWork(hashBinary)) {
+                console.log(`Found solution, nonce: ${nonce}`)
                 this.nonce = nonce
                 return
             }
             nonce += 1
         }
+    }
+
+    /**
+     * Checks if the binary hash starts with a given number of zero's (set by the minerData.powLength)
+     * @param hashBinary - string
+     * @returns true if it does, false if it does not
+     */
+    isValidProofOfWork(hashBinary: string) {
+        return hashBinary.substring(0, minerData.powLength) === "0".repeat(minerData.powLength)
     }
 }
 
@@ -75,7 +107,7 @@ class Chain {
     }
 
     get lastBlock() {
-        return this.chain[-1]
+        return this.chain[this.chain.length-1]
     }
 
     addBlock(transaction: Transaction, payerPublicKey: string, signature: Buffer) {
@@ -89,7 +121,8 @@ class Chain {
         // generate new block only if signature is valid
         if (isValidSignature) {
             const prevHash = this.lastBlock.hash
-            const newBlock = new Block(prevHash, transaction) 
+            const newBlock = new Block(prevHash, transaction)
+            newBlock.mine()
             this.chain.push(newBlock)
         }
     }
@@ -124,3 +157,16 @@ class Wallet {
         Chain.instance.addBlock(transaction, this.publicKey, signature)
     }
 }
+
+// Example usage
+const satoshi = new Wallet()
+const raf = new Wallet()
+const lucy = new Wallet()
+
+console.log(Chain.instance)
+
+satoshi.sendMoney(50, raf.publicKey)
+raf.sendMoney(25, lucy.publicKey)
+lucy.sendMoney(10, satoshi.publicKey)
+
+console.log(Chain.instance)
