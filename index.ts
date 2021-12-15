@@ -1,5 +1,9 @@
 import * as crypto from "crypto";
 
+function hexToDecimal(hex: string) {
+    return parseInt(hex, 16).toString(2)
+}
+
 class Transaction {
     constructor(
         public from: string, 
@@ -17,15 +21,43 @@ class Block {
         public previousHash: string,
         public transaction: Transaction,
         public date = Date.now(),
-        // public nonce: number, 
+        public nonce = 0 // this will be updated by the mine function
     ) {}
 
+    get header() {
+        // return all fields except the nonce
+        return {
+            previousHash: this.previousHash,
+            transaction: this.transaction,
+            date: this.date,
+        }
+    }
+
     get hash() {
-        const blockStr = JSON.stringify(this)
+        const blockStr = JSON.stringify(this.header)
         const hash = crypto.createHash("SHA256")
         hash.update(blockStr).end()
 
         return hash.digest('hex')
+    }
+
+    mine() {
+        // Mining works by trying to find a nonce, so that
+        // when you hash the combination of the block headerer and the nonce
+        // you get a hash with meets a certain criteria 
+        // (the criteria is usually a hash that contains a number of trailing zero's)
+        let nonce = 0
+        while (true) {
+            const hashHex = crypto.createHash("MD5").update(this.header + nonce.toString()).digest('hex')
+            const hashBinary = hexToDecimal(hashHex)
+
+            // check if hash passes the mining condition
+            if (hashBinary.substring(0, 4) === "0000") {
+                this.nonce = nonce
+                return
+            }
+            nonce += 1
+        }
     }
 }
 
